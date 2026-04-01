@@ -1,49 +1,58 @@
-const userDownloadsFolder = require("downloads-folder");
 const axios = require("axios");
 const cheerio = require("cheerio");
-const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-const url = "";
+const url = process.argv[2];
+
+if (!url) {
+  console.error("Usage: node index.js <url>");
+  process.exit(1);
+}
+
+const audioDir = path.join(__dirname, "audio");
 
 const fetchData = async () => {
   const result = await axios.get(url);
   return cheerio.load(result.data);
 };
 
-const download = function (
-  url,
-  filename,
-  cb = () => console.log("downloading")
-) {
-  var file = fs.createWriteStream(path.join(__dirname, "audio", filename));
+const download = async (fileUrl, filename) => {
+  const filepath = path.join(audioDir, filename);
+  const writer = fs.createWriteStream(filepath);
 
-  http
-    .get(url, function (response) {
-      response.pipe(file);
+  const response = await axios.get(fileUrl, { responseType: "stream" });
+  response.data.pipe(writer);
 
-      file.on("finish", function () {
-        file.close(cb); // close() is async, call cb after close completes.
-      });
-    })
-    .on("error", function (err) {
-      // Handle errors
-      fs.unlink(file); // Delete the file async. (But we don't check the result)
-      if (cb) cb(err.message);
+  return new Promise((resolve, reject) => {
+    writer.on("finish", resolve);
+    writer.on("error", (err) => {
+      fs.unlink(filepath, () => {});
+      reject(err);
     });
+  });
 };
 
 const start = async () => {
+  fs.mkdirSync(audioDir, { recursive: true });
+
   const $ = await fetchData();
 
-  //create links object [...{filename: filepath}]
+  const links = [];
   $('a[href*="mp3"]').each((index, value) => {
     const dlLink = `${url}/${$(value).attr("href")}`;
-    const filename = dlLink.replace(/^.*[\\\/]/, "").replace(/%20/, "-");
-    //const fileName = formatFilename(value);
-    download(dlLink, filename, () => console.log(`Downloaded: ${filename}`));
+    const filename = decodeURIComponent(dlLink.replace(/^.*[\\\/]/, ""));
+    links.push({ dlLink, filename });
   });
+
+  for (const { dlLink, filename } of links) {
+    try {
+      await download(dlLink, filename);
+      console.log(`Downloaded: ${filename}`);
+    } catch (err) {
+      console.error(`Failed to download ${filename}: ${err.message}`);
+    }
+  }
 };
 
 start();
