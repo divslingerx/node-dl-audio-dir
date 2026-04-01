@@ -4,9 +4,11 @@ const fs = require("fs");
 const path = require("path");
 
 const url = process.argv[2];
+const userFormats = process.argv[3];
 
 if (!url) {
-  console.error("Usage: node index.js <url>");
+  console.error("Usage: node index.js <url> [formats]");
+  console.error("  formats: comma-separated list of audio extensions (e.g. mp3,flac,wav)");
   process.exit(1);
 }
 
@@ -38,8 +40,12 @@ const start = async () => {
 
   const $ = await fetchData();
 
+  const allFormats = ["mp3", "wav", "flac", "ogg", "aac", "m4a", "wma", "opus"];
+  const formats = userFormats ? userFormats.split(",").map((f) => f.trim()) : allFormats;
+  const selector = formats.map((ext) => `a[href$=".${ext}"]`).join(", ");
+
   const links = [];
-  $('a[href*="mp3"]').each((index, value) => {
+  $(selector).each((index, value) => {
     const dlLink = `${url}/${$(value).attr("href")}`;
     const filename = decodeURIComponent(dlLink.replace(/^.*[\\\/]/, ""));
     links.push({ dlLink, filename });
